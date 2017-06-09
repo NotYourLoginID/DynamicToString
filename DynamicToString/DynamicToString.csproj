@@ -43,6 +43,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DataClasses.cs" />
+    <Compile Include="Enumerations\MethodSource.cs" />
+    <Compile Include="Enumerations\NullValueOptions.cs" />
+    <Compile Include="Enumerations\SourceRestrictions.cs" />
+    <Compile Include="Enumerations\TextEnclosures.cs" />
     <Compile Include="InternalExtensions.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

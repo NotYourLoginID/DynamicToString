@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using DynamicToString.Enumerations;
 
 namespace DynamicToString
 {
@@ -55,14 +56,26 @@ namespace DynamicToString
 
             //InternalExtensions.SetAutoStringMethod<MyBasicClass>(x => $"{nameof(MyBasicClass)} Object - {x.MyString}");
 
-            var bigList = RandomMyBasicClass(200).ToList();
+            //var bigList = RandomMyBasicClass(200).ToList();
+            var bigList = shapeList.ToList();
 
-            var output = bigList.TimeListAutoToString();
+            var output = bigList.AutoString();
+            //var output = bigList.TimeListAutoToString();
             Console.Out.WriteLine(output);
 
-            bigList = RandomMyBasicClass(200).ToList();
-            output = bigList.TimeListAutoToString();
+            InternalExtensions.ComplexTypeWrapper = TextEnclosures.SingleQuotes;
+            InternalExtensions.PrimitiveTypeWrapper = TextEnclosures.SingleQuotes;
+            InternalExtensions.NullableTypeWrapper = TextEnclosures.SingleQuotes;
+            InternalExtensions.NullString = "eylmao";
+            InternalExtensions.NullWrapper = TextEnclosures.SingleQuotes;
+            InternalExtensions.EnumerationTypeWrapper = TextEnclosures.SingleQuotes;
+
+            output = bigList.AutoString();
             Console.Out.WriteLine(output);
+
+            //bigList = RandomMyBasicClass(200).ToList();
+            //output = bigList.TimeListAutoToString();
+            //Console.Out.WriteLine(output);
 
 
             //output = basicList2.TimeAutoToString();
