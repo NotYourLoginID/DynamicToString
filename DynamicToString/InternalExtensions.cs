@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Runtime.InteropServices.WindowsRuntime;
 using DynamicToString.Enumerations;
 
 namespace DynamicToString
@@ -146,6 +145,7 @@ namespace DynamicToString
         private static Dictionary<Type, MethodSource> _methodSources;
         private static Dictionary<Type, Func<object, string>> _methodCache;
         private static Dictionary<Type, HashSet<Type>> _dependentTypes;
+        private static Dictionary<Type, HashSet<Type>> _typeUsages;
 
         private static HashSet<Type> _typeRebuildQueue;
         private static string _nullString;
@@ -181,9 +181,22 @@ namespace DynamicToString
             return dependencies;
         }
 
-        public static void ResetTypeDependencies()
+        public static void ResetTypeDependencies(bool clearUsages = false)
         {
             _dependentTypes = new Dictionary<Type, HashSet<Type>>();
+            if (clearUsages)
+            {
+                ResetTypeUsages(false);
+            }
+        }
+
+        public static void ResetTypeUsages(bool clearDependencies = false)
+        {
+            _typeUsages = new Dictionary<Type, HashSet<Type>>();
+            if (clearDependencies)
+            {
+                ResetTypeDependencies(false);
+            }
         }
 
         private static bool AddToRebuildQueue(this Type t, bool ignoreCustomFunctions = true)
