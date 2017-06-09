@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.InteropServices.WindowsRuntime;
 using DynamicToString.Enumerations;
 
 namespace DynamicToString
@@ -30,72 +31,199 @@ namespace DynamicToString
         public static string NullString
         {
             get { return _nullString; }
-            set { _nullString = value; }
+            set
+            {
+                _nullString = value; 
+                PopulateRebuildQueue();
+            }
         }
 
-        public static TextEnclosures NullWrapper { get; set; }
-        public static TextEnclosures PrimitiveTypeWrapper { get; set; }
-        public static TextEnclosures StringTypeWrapper { get; set; }
-        public static TextEnclosures EnumerationTypeWrapper { get; set; }
-        public static TextEnclosures NullableTypeWrapper { get; set; }
-        public static TextEnclosures EnumerableTypeWrapper { get; set; }
-        public static TextEnclosures ComplexTypeWrapper { get; set; }
+        public static TextEnclosures NullWrapper
+        {
+            get { return _nullWrapper; }
+            set
+            {
+                _nullWrapper = value;
+                PopulateRebuildQueue();
+            }
+        }
+
+        public static TextEnclosures PrimitiveTypeWrapper
+        {
+            get { return _primitiveTypeWrapper; }
+            set
+            {
+                _primitiveTypeWrapper = value; 
+                PopulateRebuildQueue();
+            }
+        }
+
+        public static TextEnclosures StringTypeWrapper
+        {
+            get { return _stringTypeWrapper; }
+            set
+            {
+                _stringTypeWrapper = value; 
+                PopulateRebuildQueue();
+            }
+        }
+
+        public static TextEnclosures EnumerationTypeWrapper
+        {
+            get { return _enumerationTypeWrapper; }
+            set
+            {
+                _enumerationTypeWrapper = value; 
+                PopulateRebuildQueue();
+
+            }
+        }
+
+        public static TextEnclosures NullableTypeWrapper
+        {
+            get { return _nullableTypeWrapper; }
+            set
+            {
+                _nullableTypeWrapper = value; 
+                PopulateRebuildQueue();
+
+            }
+        }
+
+        public static TextEnclosures EnumerableTypeWrapper
+        {
+            get { return _enumerableTypeWrapper; }
+            set
+            {
+                _enumerableTypeWrapper = value;
+                PopulateRebuildQueue();
+
+            }
+        }
+
+        public static TextEnclosures ComplexTypeWrapper
+        {
+            get { return _complexTypeWrapper; }
+            set
+            {
+                _complexTypeWrapper = value; 
+                PopulateRebuildQueue();
+
+            }
+        }
 
         private static SourceRestrictions _sourceRestrictionLevel;
         public static SourceRestrictions SourceRestrictionLevel
         {
-            get => _sourceRestrictionLevel;
-            set => ChangeRestrictionLevels(value);
+            get { return _sourceRestrictionLevel; }
+            set
+            {
+                var previousRestrictionLevel = _sourceRestrictionLevel;
+                _sourceRestrictionLevel = value;
+
+                if (previousRestrictionLevel != _sourceRestrictionLevel)
+                {
+                    // check for a more-restrictive change
+                    if (!_sourceRestrictionLevel.HasFlag(previousRestrictionLevel))
+                    {
+                        foreach (var affectedType in _methodSources
+                            .Where(kvp => kvp.Value != MethodSource.Custom && !kvp.Value.ValidForRestriction(value))
+                            .Select(kvp => kvp.Key))
+                        {
+                            affectedType.AddToRebuildQueue();
+                        }
+                    }
+                }
+                else
+                {
+                    PopulateRebuildQueue();
+                }
+            } 
         }
 
         public static string NullPlaceholder => NullString.WrapString(NullWrapper);
 
-
         private static Dictionary<Type, MethodSource> _methodSources;
         private static Dictionary<Type, Func<object, string>> _methodCache;
+        private static Dictionary<Type, HashSet<Type>> _dependentTypes;
+
+        private static HashSet<Type> _typeRebuildQueue;
         private static string _nullString;
+        private static TextEnclosures _nullWrapper;
+        private static TextEnclosures _primitiveTypeWrapper;
+        private static TextEnclosures _stringTypeWrapper;
+        private static TextEnclosures _enumerationTypeWrapper;
+        private static TextEnclosures _nullableTypeWrapper;
+        private static TextEnclosures _enumerableTypeWrapper;
+        private static TextEnclosures _complexTypeWrapper;
 
         public static IReadOnlyDictionary<Type, Func<object, string>> MethodCache => new ReadOnlyDictionary<Type, Func<object, string>>(_methodCache);
         public static IReadOnlyDictionary<Type, MethodSource> MethodSources => new ReadOnlyDictionary<Type, MethodSource>(_methodSources);
 
-        private static void RebuildCachedMethods(bool updateCustomMethods = false)
-        {
-            
-        }
 
-        private static void ChangeRestrictionLevels(SourceRestrictions newRestrictionLevel)
+        public static HashSet<Type> GetDependentTypes(this Type type)
         {
-            if (_sourceRestrictionLevel != newRestrictionLevel)
-            {
-                var oldRestrictionLevel = _sourceRestrictionLevel;
-                if (newRestrictionLevel.HasFlag(oldRestrictionLevel))
-                {
-                    // less restrictions
-                    _sourceRestrictionLevel = newRestrictionLevel;
-                    _methodSources.Where(kvp => kvp.Key.IsComplexType() && kvp.Value != MethodSource.Custom).Select(kvp => {
-                        MethodInfo info;
-                        MethodSource source;
-                        var hasInfo = kvp.Key.TryGetClassToStringMethodInfo(out info, out source);
-                        return new { HasInfo = hasInfo, Info = info, Source = source, TypeKey = kvp.Key };
-                    }).Where(i => i.HasInfo && i.Source.ValidForRestriction(newRestrictionLevel)).ToList().ForEach(m => {
-                        var function = m.Info.GenerateToStringFunction(ComplexTypeWrapper);
-                        m.TypeKey.RegisterMethod(function, m.Source);
-                    });
+            HashSet<Type> dependencies;
+            if (!_dependentTypes.TryGetValue(type, out dependencies)) {
+                dependencies = new HashSet<Type>();
+                if (type.IsSimpleType()) {
+                    _dependentTypes.Add(type, dependencies);
                 }
-                else
-                {
-                    var typesToRebuild = _methodSources.Where(kvp => kvp.Value != MethodSource.Custom && !kvp.Value.ValidForRestriction(newRestrictionLevel)).Select(kvp => kvp.Key).ToList();
-                    _sourceRestrictionLevel = newRestrictionLevel;
-                    typesToRebuild.ForEach(t => {
-                        _methodSources.Remove(t);
-                        _methodCache.Remove(t);
-                        MethodSource source;
-                        var function = t.GenerateToStringFunction(out source);
-                        t.RegisterMethod(function, source);
-                    });
+                else {
+                    var allPropertyTypes = new HashSet<Type>(type.GetProperties(BindingFlags.Instance | BindingFlags.Public).Select(p => p.PropertyType));
+                    dependencies.UnionWith(allPropertyTypes);
+                    foreach (var propertyType in allPropertyTypes) {
+                        dependencies.UnionWith(GetDependentTypes(propertyType));
+                    }
+                    _dependentTypes.Add(type, dependencies);
                 }
             }
+            return dependencies;
         }
+
+        public static void ResetTypeDependencies()
+        {
+            _dependentTypes = new Dictionary<Type, HashSet<Type>>();
+        }
+
+        private static bool AddToRebuildQueue(this Type t, bool ignoreCustomFunctions = true)
+        {
+            MethodSource source;
+            if (_methodSources.TryGetValue(t, out source))
+            {
+                if (ignoreCustomFunctions && source == MethodSource.Custom)
+                {
+                    return false;
+                }
+            }
+            return _typeRebuildQueue.Add(t);
+        }
+
+        private static bool RemoveFromRebuildQueue(this Type t)
+        {
+            return _typeRebuildQueue.Remove(t);
+        }
+
+        private static IEnumerable<Type> PopulateRebuildQueue(bool ignoreCustomFunctions = true)
+        {
+            var scheduledKeys = new List<Type>();
+            foreach (var typeKey in _methodSources.Keys.Union(_methodCache.Keys))
+            {
+                if (typeKey.AddToRebuildQueue(ignoreCustomFunctions))
+                {
+                    scheduledKeys.Add(typeKey);
+                }
+            }
+            return scheduledKeys;
+        }
+
+        //private static IEnumerable<Type> RebuildQueuedTypes()
+        //{
+        //    foreach (var queuedType in _typeRebuildQueue.ToList())
+        //    {
+        //        queuedType.Get
+        //    }
+        //}
 
         private static bool IsNullOrEmpty<TKey, TValue>(this Dictionary<TKey, TValue> d) { return d == null || !d.Any(); }
 
@@ -181,6 +309,22 @@ namespace DynamicToString
             return AddToCache(typeof(TObject), obj => function((TObject)obj), replaceExisting);
         }
 
+
+        private static bool UpdateCachedFunction(this Type t, bool ignoreCustomFunctions = true)
+        {
+            MethodSource source;
+            if (_methodSources.TryGetValue(t, out source))
+            {
+                if (ignoreCustomFunctions && source == MethodSource.Custom)
+                {
+                    return false;
+                }
+            }
+            var function = t.GenerateToStringFunction(out source);
+            t.RegisterMethod(function, source);
+            return true;
+        }
+
         private static Func<object, string> RegisterMethod(this Type type, Func<object, string> function, MethodSource source)
         {
             if (function == null)
@@ -197,9 +341,31 @@ namespace DynamicToString
 
         static InternalExtensions()
         {
+            ResetTypeDependencies();
             FullCacheSourceAndSettingsReset();
             ResetNullSettings();
             ResetWrapperSettings();
+        }
+
+        public static Func<object, string> GetToStringFunction(this Type t)
+        {
+            Func<object, string> function;
+            if (_typeRebuildQueue.Contains(t) || !_methodCache.TryGetValue(t, out function))
+            {
+                MethodSource source;
+                function = t.GenerateToStringFunction(out source);
+                t.RegisterMethod(function, source);
+                _typeRebuildQueue.Remove(t);
+            }
+            return function;
+        }
+
+        public static void RebuildToStringFunction(this Type t)
+        {
+            MethodSource source;
+            var function = t.GenerateToStringFunction(out source);
+            t.RegisterMethod(function, source);
+            _typeRebuildQueue.Remove(t);
         }
 
         public static string AutoString(this object obj)
@@ -208,26 +374,7 @@ namespace DynamicToString
             {
                 return NullPlaceholder;
             }
-            var objectType = obj.GetType();
-            Func<object, string> toStringMethod;
-            if (!_methodCache.TryGetValue(objectType, out toStringMethod))
-            {
-                Type elementType;
-                if (objectType.IsEnumerableType(out elementType))
-                {
-
-                    Func<object, string> elementToStringMethod;
-                    if (!_methodCache.TryGetValue(elementType, out elementToStringMethod))
-                    {
-                        MethodSource elementMethodSource;
-                        elementToStringMethod = GenerateToStringFunction(elementType, out elementMethodSource);
-                        RegisterMethod(elementType, elementToStringMethod, elementMethodSource);
-                    }
-                }
-                MethodSource source;
-                toStringMethod = GenerateToStringFunction(objectType, out source);
-                RegisterMethod(objectType, toStringMethod, source);
-            }
+            var toStringMethod = obj.GetType().GetToStringFunction();
             return toStringMethod(obj);
         }
 
@@ -249,13 +396,16 @@ namespace DynamicToString
                 source = MethodSource.AutoMethod;
                 return PimitiveAutoStringMethod;
             }
-            if (objectType.IsNullableType())
+            Type innerType;
+            if (objectType.IsNullableType(out innerType))
             {
+                innerType.GetToStringFunction();
                 source = MethodSource.AutoMethod;
                 return NullableAutoStringMethod;
             }
-            if (objectType.IsEnumerableType())
+            if (objectType.IsEnumerableType(out innerType))
             {
+                innerType.GetToStringFunction();
                 source = MethodSource.AutoMethod;
                 return EnumerableAutoStringMethod;
             }
